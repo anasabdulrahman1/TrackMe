@@ -1,11 +1,15 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { Session } from '@supabase/supabase-js';
+import { Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 // Define the shape of our context
 interface AuthContextType {
   session: Session | null;
   loading: boolean;
+  // NEW: Add our functions to the context
+  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
+  signUp: (email: string, password: string) => Promise<{ error: AuthError | null }>;
+  signOut: () => Promise<{ error: AuthError | null }>;
 }
 
 // Create the context
@@ -27,20 +31,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (_event, currentSession) => {
         setSession(currentSession);
-        // We set loading to false here too, in case getSession() was slow
         setLoading(false); 
       }
     );
 
-    // 3. Clean up the listener when the component unmounts
+    // 3. Clean up the listener
     return () => {
       authListener?.subscription.unsubscribe();
     };
   }, []);
 
+  // NEW: Define the auth functions
   const value = {
     session,
     loading,
+    signIn: async (email: string, password: string) => {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      return { error };
+    },
+    signUp: async (email: string, password: string) => {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      return { error };
+    },
+    signOut: async () => {
+      const { error } = await supabase.auth.signOut();
+      return { error };
+    },
   };
 
   // We only render the children (our app) AFTER we've checked for a session

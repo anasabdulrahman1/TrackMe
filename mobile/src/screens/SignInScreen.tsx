@@ -1,21 +1,17 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { Button, Text, TextInput } from 'react-native-paper';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext'; // <-- Import our new hook
 
-// We'll need navigation to go to the "Sign Up" screen
 export const SignInScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { signIn } = useAuth(); // <-- Get the signIn function from our "brain"
 
-  const signInWithEmail = async () => {
+  const handleSignIn = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: password,
-    });
-
+    const { error } = await signIn(email, password); // <-- Use the function
     if (error) Alert.alert('Sign In Error', error.message);
     setLoading(false);
   };
@@ -35,7 +31,6 @@ export const SignInScreen = ({ navigation }: any) => {
       <Text variant="headlineLarge" style={styles.title}>
         Welcome to TrackMe
       </Text>
-
       <TextInput
         label="Email"
         value={email}
@@ -44,7 +39,6 @@ export const SignInScreen = ({ navigation }: any) => {
         keyboardType="email-address"
         style={styles.input}
       />
-
       <TextInput
         label="Password"
         value={password}
@@ -52,24 +46,21 @@ export const SignInScreen = ({ navigation }: any) => {
         secureTextEntry
         style={styles.input}
       />
-
       <Button
         mode="contained"
-        onPress={signInWithEmail}
+        onPress={handleSignIn}
         loading={loading}
         style={styles.button}>
         Sign In
       </Button>
-
       <Button
         mode="outlined"
         onPress={() => navigation.navigate('SignUp')}
         style={styles.button}>
         Create Account
       </Button>
-
+      {/* ...rest of your social login buttons... */}
       <Text style={styles.orText}>or</Text>
-
       <Button
         mode="contained-tonal"
         icon="google"
@@ -77,7 +68,6 @@ export const SignInScreen = ({ navigation }: any) => {
         style={styles.button}>
         Sign In with Google
       </Button>
-
       <Button
         mode="contained-tonal"
         icon="apple"
@@ -89,6 +79,7 @@ export const SignInScreen = ({ navigation }: any) => {
   );
 };
 
+// ... your styles StyleSheet ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,

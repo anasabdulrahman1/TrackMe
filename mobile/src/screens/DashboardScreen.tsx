@@ -1,21 +1,17 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { Button, Text } from 'react-native-paper';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext'; // <-- Import our new hook
 
 export const DashboardScreen = () => {
   const [loading, setLoading] = useState(false);
+  const { signOut } = useAuth(); // <-- Get the signOut function
 
   const handleSignOut = async () => {
     setLoading(true);
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-    } catch (error: any) {
-      Alert.alert('Error signing out', error.message);
-    } finally {
-      setLoading(false);
-    }
+    const { error } = await signOut(); // <-- Use the function
+    if (error) Alert.alert('Error signing out', error.message);
+    setLoading(false);
   };
 
   return (
@@ -23,19 +19,19 @@ export const DashboardScreen = () => {
       <Text variant="headlineMedium" style={styles.title}>
         TrackMe Dashboard
       </Text>
-      <Button 
-        mode="contained" 
+      <Button
+        mode="contained"
         onPress={handleSignOut}
         loading={loading}
         disabled={loading}
-        style={styles.button}
-      >
+        style={styles.button}>
         Sign Out
       </Button>
     </View>
   );
 };
 
+// ... your styles StyleSheet ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
