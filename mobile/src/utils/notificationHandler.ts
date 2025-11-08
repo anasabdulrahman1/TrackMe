@@ -1,6 +1,6 @@
 // src/utils/notificationHandler.ts
 import messaging from '@react-native-firebase/messaging';
-import { Alert } from 'react-native';
+import { EventRegister } from 'react-native-event-listeners';
 
 /**
  * Request notification permissions (iOS)
@@ -26,16 +26,14 @@ export async function requestNotificationPermission(): Promise<boolean> {
 async function displayNotification(
   title: string,
   body: string,
-  _data?: { [key: string]: string }
+  data?: { [key: string]: string }
 ) {
-  // For foreground notifications, show an alert
-  // Background/quit state notifications are handled automatically by FCM
-  Alert.alert(title, body, [
-    {
-      text: 'OK',
-      onPress: () => console.log('Notification acknowledged'),
-    },
-  ]);
+  // Emit event for custom toast notification
+  EventRegister.emit('showNotificationToast', {
+    title,
+    message: body,
+    data,
+  });
 }
 
 /**

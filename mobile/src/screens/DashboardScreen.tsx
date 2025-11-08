@@ -131,6 +131,22 @@ export const DashboardScreen = () => {
       {/* --- AppBar --- */}
       <Appbar.Header mode="small" style={styles.appBar}>
         <Appbar.Content title="Your Dashboard" titleStyle={styles.appTitle} />
+        <Appbar.Action 
+          icon="gmail" 
+          onPress={() => navigation.navigate('GmailConnection' as never)} 
+        />
+        <Appbar.Action 
+          icon="inbox" 
+          onPress={() => navigation.navigate('SuggestionInbox' as never)} 
+        />
+        <Appbar.Action 
+          icon="bell-outline" 
+          onPress={() => navigation.navigate('NotificationHistory' as never)} 
+        />
+        <Appbar.Action 
+          icon="cog-outline" 
+          onPress={() => navigation.navigate('NotificationSettings' as never)} 
+        />
         <Appbar.Action icon="logout" onPress={handleLogout} />
       </Appbar.Header>
 

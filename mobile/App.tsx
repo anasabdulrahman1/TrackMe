@@ -1,6 +1,6 @@
 // App.tsx
 import 'react-native-url-polyfill/auto'; // Must stay at the very top
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Provider as PaperProvider, MD3LightTheme } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -13,6 +13,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator } from 'react-native-paper';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { initializeNotifications } from './src/utils/notificationHandler';
+import { NotificationToast } from './src/Components/NotificationToast';
+import { EventRegister } from 'react-native-event-listeners';
 
 
 // --- Screens ---
@@ -20,6 +22,10 @@ import { SignInScreen } from './src/screens/SignInScreen';
 import { SignUpScreen } from './src/screens/SignUpScreen';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { AddSubscriptionScreen } from './src/screens/AddSubscriptionScreen';
+import { NotificationSettingsScreen } from './src/screens/NotificationSettingsScreen';
+import { NotificationHistoryScreen } from './src/screens/NotificationHistoryScreen';
+import { GmailConnectionScreen } from './src/screens/GmailConnectionScreen';
+import { SuggestionInboxScreen } from './src/screens/SuggestionInboxScreen';
 
 // --- Stack Navigator ---
 const Stack = createNativeStackNavigator();
@@ -88,6 +94,26 @@ function RootNavigator() {
             component={AddSubscriptionScreen}
             options={{ title: 'Add New Subscription' }}
           />
+          <Stack.Screen
+            name="NotificationSettings"
+            component={NotificationSettingsScreen}
+            options={{ title: 'Notification Settings' }}
+          />
+          <Stack.Screen
+            name="NotificationHistory"
+            component={NotificationHistoryScreen}
+            options={{ title: 'Notification History' }}
+          />
+          <Stack.Screen
+            name="GmailConnection"
+            component={GmailConnectionScreen}
+            options={{ title: 'Gmail Connection' }}
+          />
+          <Stack.Screen
+            name="SuggestionInbox"
+            component={SuggestionInboxScreen}
+            options={{ title: 'Subscription Suggestions' }}
+          />
         </>
       ) : (
         <>
@@ -112,6 +138,12 @@ function RootNavigator() {
  * Wraps everything inside Paper, SafeArea, and Auth context.
  */
 export default function App() {
+  const [toast, setToast] = useState<{
+    title: string;
+    message: string;
+    data?: any;
+  } | null>(null);
+
   useEffect(() => {
     // Initialize notification handlers
     let unsubscribe: (() => void) | undefined;
@@ -123,8 +155,21 @@ export default function App() {
       unsubscribe = unsub;
     });
 
+    // Listen for toast notifications
+    const toastListener = EventRegister.addEventListener(
+      'showNotificationToast',
+      (data: any) => {
+        setToast(data);
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => setToast(null), 5000);
+      }
+    );
+
     return () => {
       unsubscribe?.();
+      if (typeof toastListener === 'string') {
+        EventRegister.removeEventListener(toastListener);
+      }
     };
   }, []);
 
@@ -134,6 +179,22 @@ export default function App() {
         <AuthProvider>
           <NavigationContainer theme={navTheme}>
             <RootNavigator />
+            
+            {/* Notification Toast Overlay */}
+            {toast && (
+              <View style={styles.toastContainer}>
+                <NotificationToast
+                  title={toast.title}
+                  message={toast.message}
+                  onPress={() => {
+                    console.log('Toast pressed:', toast.data);
+                    setToast(null);
+                  }}
+                  onDismiss={() => setToast(null)}
+                  type="reminder"
+                />
+              </View>
+            )}
           </NavigationContainer>
         </AuthProvider>
       </PaperProvider>
@@ -149,5 +210,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  toastContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 9999,
   },
 });

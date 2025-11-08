@@ -7,12 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:217563768495:android:d6bc73c1ffe435feaa165a",
+        "mobilesdk_app_id": "1:217563768495:android:c7b2014176daddc8aa165a",
         "android_client_info": {
-          "package_name": "com.mobile"
+          "package_name": "com.trackme.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "217563768495-2rlcs1j3r21nmhqo1ue4bd2blg77tjhk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD9tVYsCGnvbpSY0Q9fhvpQqRVgJ8dXt7U"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "217563768495-2rlcs1j3r21nmhqo1ue4bd2blg77tjhk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
