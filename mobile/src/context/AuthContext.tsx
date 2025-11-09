@@ -96,36 +96,30 @@ async function registerDeviceForNotifications(userId?: string) {
 
     console.log('FCM Token:', fcmToken);
 
-    const { data: existingDevice } = await supabase
+    // Use upsert to handle device registration/transfer automatically
+    // This is the professional approach used by big tech companies
+    const { error: upsertError } = await supabase
       .from('devices')
-      .select('id, device_token, logged_in')
-      .eq('user_id', userId)
-      .eq('device_token', fcmToken)
-      .maybeSingle();
-
-    if (existingDevice) {
-      await supabase
-        .from('devices')
-        .update({
+      .upsert(
+        {
+          device_token: fcmToken,
+          user_id: userId,
+          platform: Platform.OS,
           logged_in: true,
           last_active: new Date().toISOString(),
-        })
-        .eq('id', existingDevice.id);
+        },
+        {
+          onConflict: 'device_token',
+          ignoreDuplicates: false, // Update existing record
+        }
+      );
 
-      console.log('✅ Existing device reactivated.');
-      return;
+    if (upsertError) {
+      console.error('❌ Device upsert failed:', upsertError);
+      throw upsertError;
     }
 
-    const { error: insertError } = await supabase.from('devices').insert({
-      user_id: userId,
-      device_token: fcmToken,
-      platform: Platform.OS,
-      logged_in: true,
-      last_active: new Date().toISOString(),
-    });
-
-    if (insertError) throw insertError;
-    console.log('📲 New device registered in Supabase.');
+    console.log('✅ Device registered/transferred successfully.');
   } catch (error: any) {
     console.error('❌ Device registration failed:', error.message);
   }

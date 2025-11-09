@@ -27,12 +27,34 @@ export const SuggestionInboxScreen = ({ navigation }: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isGmailConnected, setIsGmailConnected] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
 
-  const loadSuggestions = useCallback(async () => {
+  const loadSuggestions = async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Check if Gmail is connected
+      const { data: integration } = await supabase
+        .from('user_integrations')
+        .select('status')
+        .eq('user_id', user.id)
+        .eq('provider', 'google')
+        .maybeSingle();
+
+      setIsGmailConnected(integration?.status === 'active');
+
+      // Check if scanning is in progress
+      const { data: scanJob } = await supabase
+        .from('queue_scan')
+        .select('status')
+        .eq('user_id', user.id)
+        .in('status', ['pending', 'processing'])
+        .maybeSingle();
+
+      setIsScanning(!!scanJob);
 
       let query = supabase
         .from('subscription_suggestions')
@@ -55,12 +77,13 @@ export const SuggestionInboxScreen = ({ navigation }: any) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [filter]);
+  };
 
   useFocusEffect(
     useCallback(() => {
       loadSuggestions();
-    }, [loadSuggestions])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filter])
   );
 
   const handleRefresh = () => {
@@ -241,24 +264,68 @@ export const SuggestionInboxScreen = ({ navigation }: any) => {
 
         {filteredSuggestions.length === 0 ? (
           <View style={styles.emptyState}>
-            <Icon name="inbox-outline" size={64} color={colors.onSurfaceVariant} />
-            <Text variant="titleMedium" style={[styles.emptyTitle, { color: colors.onSurfaceVariant }]}>
-              {filter === 'pending' ? 'No pending suggestions' : 'No suggestions found'}
-            </Text>
-            <Text variant="bodyMedium" style={[styles.emptySubtitle, { color: colors.onSurfaceVariant }]}>
-              {filter === 'pending' 
-                ? "Connect Gmail to discover subscriptions"
-                : "Try changing the filter or search query"}
-            </Text>
-            {filter === 'pending' && (
-              <Button
-                mode="contained"
-                onPress={() => navigation.navigate('GmailConnection')}
-                icon="google"
-                style={styles.connectButton}
-              >
-                Connect Gmail
-              </Button>
+            {!isGmailConnected ? (
+              // Not connected state
+              <>
+                <Icon name="email-off-outline" size={80} color={colors.onSurfaceVariant} />
+                <Text variant="headlineSmall" style={[styles.emptyTitle, { color: colors.onSurface }]}>
+                  Gmail Not Connected
+                </Text>
+                <Text variant="bodyMedium" style={[styles.emptySubtitle, { color: colors.onSurfaceVariant }]}>
+                  Connect your Gmail account to automatically discover and track your subscriptions
+                </Text>
+                <Button
+                  mode="contained"
+                  onPress={() => navigation.navigate('GmailConnection')}
+                  icon="google"
+                  style={styles.connectButton}
+                  contentStyle={styles.connectButtonContent}
+                >
+                  Connect Gmail
+                </Button>
+              </>
+            ) : isScanning ? (
+              // Scanning in progress
+              <>
+                <Icon name="email-search" size={80} color={colors.primary} />
+                <Text variant="headlineSmall" style={[styles.emptyTitle, { color: colors.onSurface }]}>
+                  Scanning Your Inbox
+                </Text>
+                <Text variant="bodyMedium" style={[styles.emptySubtitle, { color: colors.onSurfaceVariant }]}>
+                  We're analyzing your emails to find subscriptions. This usually takes 3-7 minutes.
+                </Text>
+                <Button
+                  mode="outlined"
+                  onPress={handleRefresh}
+                  icon="refresh"
+                  style={styles.connectButton}
+                >
+                  Refresh
+                </Button>
+              </>
+            ) : (
+              // No suggestions found
+              <>
+                <Icon name="inbox-outline" size={80} color={colors.onSurfaceVariant} />
+                <Text variant="headlineSmall" style={[styles.emptyTitle, { color: colors.onSurface }]}>
+                  {filter === 'pending' ? 'No Pending Suggestions' : 'No Suggestions Found'}
+                </Text>
+                <Text variant="bodyMedium" style={[styles.emptySubtitle, { color: colors.onSurfaceVariant }]}>
+                  {filter === 'pending' 
+                    ? "No subscription emails found yet. Try scanning again or check other filters."
+                    : "Try changing the filter or search query"}
+                </Text>
+                {filter === 'pending' && (
+                  <Button
+                    mode="contained"
+                    onPress={() => navigation.navigate('GmailConnection')}
+                    icon="refresh"
+                    style={styles.connectButton}
+                  >
+                    Scan Again
+                  </Button>
+                )}
+              </>
             )}
           </View>
         ) : (
@@ -375,6 +442,9 @@ const styles = StyleSheet.create({
   },
   connectButton: {
     marginTop: 24,
+  },
+  connectButtonContent: {
+    paddingVertical: 8,
   },
   fab: {
     position: 'absolute',
