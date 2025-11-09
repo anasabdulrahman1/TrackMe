@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Alert } from 'react-native';
 import { Text, Card, Button, Chip, useTheme, FAB, Searchbar, SegmentedButtons } from 'react-native-paper';
 import { AppLayout } from '../Components/AppLayout';
@@ -29,6 +29,11 @@ export const SuggestionInboxScreen = ({ navigation }: any) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isGmailConnected, setIsGmailConnected] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{
+    scanning: number;
+    parsing: number;
+    ingesting: number;
+  } | null>(null);
 
   const loadSuggestions = async () => {
     try {
@@ -46,15 +51,45 @@ export const SuggestionInboxScreen = ({ navigation }: any) => {
 
       setIsGmailConnected(integration?.status === 'active');
 
-      // Check if scanning is in progress
-      const { data: scanJob } = await supabase
+      // Check if scanning is in progress and get detailed progress
+      const { data: scanJobs } = await supabase
         .from('queue_scan')
         .select('status')
         .eq('user_id', user.id)
         .in('status', ['pending', 'processing'])
-        .maybeSingle();
+        .limit(1);
 
-      setIsScanning(!!scanJob);
+      const isCurrentlyScanning = !!(scanJobs && scanJobs.length > 0);
+      setIsScanning(isCurrentlyScanning);
+
+      // Get detailed pipeline progress if scanning
+      if (isCurrentlyScanning) {
+        const [scanCount, parseCount, ingestCount] = await Promise.all([
+          supabase
+            .from('queue_scan')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .in('status', ['pending', 'processing']),
+          supabase
+            .from('queue_parse')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .in('status', ['pending', 'processing']),
+          supabase
+            .from('queue_ingest')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .in('status', ['pending', 'processing']),
+        ]);
+
+        setScanProgress({
+          scanning: scanCount.count || 0,
+          parsing: parseCount.count || 0,
+          ingesting: ingestCount.count || 0,
+        });
+      } else {
+        setScanProgress(null);
+      }
 
       let query = supabase
         .from('subscription_suggestions')
@@ -86,9 +121,87 @@ export const SuggestionInboxScreen = ({ navigation }: any) => {
     }, [filter])
   );
 
+  // Auto-refresh while scanning
+  useEffect(() => {
+    if (!isScanning) return;
+
+    const intervalId = setInterval(() => {
+      console.log('Auto-refreshing scan progress...');
+      loadSuggestions();
+    }, 10000); // Refresh every 10 seconds
+
+    return () => {
+      clearInterval(intervalId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScanning]);
+
   const handleRefresh = () => {
     setRefreshing(true);
     loadSuggestions();
+  };
+
+  const handleRescan = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Check if Gmail is connected
+      const { data: integration } = await supabase
+        .from('user_integrations')
+        .select('status')
+        .eq('user_id', user.id)
+        .eq('provider', 'google')
+        .maybeSingle();
+
+      if (!integration || integration.status !== 'active') {
+        Alert.alert(
+          'Gmail Not Connected',
+          'Please connect your Gmail account first',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Connect Gmail', onPress: () => navigation.navigate('GmailConnection') }
+          ]
+        );
+        return;
+      }
+
+      // Check if scan is already in progress
+      const { data: existingScan } = await supabase
+        .from('queue_scan')
+        .select('id')
+        .eq('user_id', user.id)
+        .in('status', ['pending', 'processing'])
+        .maybeSingle();
+
+      if (existingScan) {
+        Alert.alert('Scan In Progress', 'A scan is already running. Please wait for it to complete.');
+        return;
+      }
+
+      // Create new scan job
+      const { error } = await supabase
+        .from('queue_scan')
+        .insert({
+          user_id: user.id,
+          scan_type: 'manual',
+          status: 'pending',
+        });
+
+      if (error) throw error;
+
+      Alert.alert(
+        '✅ Scan Started',
+        'Your inbox is being scanned for subscriptions. This usually takes 3-7 minutes. Pull down to refresh.',
+        [{ text: 'OK' }]
+      );
+
+      // Refresh to show scanning state
+      loadSuggestions();
+    } catch (error) {
+      console.error('Error starting rescan:', error);
+      Alert.alert('Error', 'Failed to start scan. Please try again.');
+    }
   };
 
   const handleApprove = async (suggestion: Suggestion) => {
@@ -176,16 +289,18 @@ export const SuggestionInboxScreen = ({ navigation }: any) => {
 
           <View style={styles.priceRow}>
             <Text variant="headlineMedium" style={styles.price}>
-              {item.currency} {item.price.toFixed(2)}
+              {item.price !== null ? `${item.currency || ''} ${item.price.toFixed(2)}` : 'Price not found'}
             </Text>
-            <Chip icon="calendar-repeat" mode="outlined">
-              {item.billing_cycle}
-            </Chip>
+            {item.billing_cycle && (
+              <Chip icon="calendar-repeat" mode="outlined">
+                {item.billing_cycle}
+              </Chip>
+            )}
           </View>
 
           <View style={styles.detailRow}>
             <Icon name="calendar-clock" size={16} color={colors.onSurfaceVariant} />
-            <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, marginLeft: 4 }}>
+            <Text variant="bodySmall" style={[styles.detailText, { color: colors.onSurfaceVariant }]}>
               Next payment: {new Date(item.next_payment_date).toLocaleDateString()}
             </Text>
           </View>
@@ -294,13 +409,53 @@ export const SuggestionInboxScreen = ({ navigation }: any) => {
                 <Text variant="bodyMedium" style={[styles.emptySubtitle, { color: colors.onSurfaceVariant }]}>
                   We're analyzing your emails to find subscriptions. This usually takes 3-7 minutes.
                 </Text>
+                
+                {scanProgress && (
+                  <View style={styles.progressContainer}>
+                    {scanProgress.scanning > 0 && (
+                      <View style={styles.progressRow}>
+                        <Icon name="email-search-outline" size={20} color={colors.primary} />
+                        <Text variant="bodyMedium" style={[styles.progressText, { color: colors.onSurface }]}>
+                          Scanning emails: {scanProgress.scanning} in progress
+                        </Text>
+                      </View>
+                    )}
+                    {scanProgress.parsing > 0 && (
+                      <View style={styles.progressRow}>
+                        <Icon name="file-document-outline" size={20} color={colors.primary} />
+                        <Text variant="bodyMedium" style={[styles.progressText, { color: colors.onSurface }]}>
+                          Analyzing content: {scanProgress.parsing} emails
+                        </Text>
+                      </View>
+                    )}
+                    {scanProgress.ingesting > 0 && (
+                      <View style={styles.progressRow}>
+                        <Icon name="database-import-outline" size={20} color={colors.primary} />
+                        <Text variant="bodyMedium" style={[styles.progressText, { color: colors.onSurface }]}>
+                          Creating suggestions: {scanProgress.ingesting} items
+                        </Text>
+                      </View>
+                    )}
+                    {scanProgress.scanning === 0 && scanProgress.parsing === 0 && scanProgress.ingesting === 0 && (
+                      <View style={styles.progressRow}>
+                        <Icon name="check-circle-outline" size={20} color={colors.primary} />
+                        <Text variant="bodyMedium" style={[styles.progressText, { color: colors.onSurface }]}>
+                          Almost done! Finalizing results...
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+                
                 <Button
                   mode="outlined"
                   onPress={handleRefresh}
                   icon="refresh"
                   style={styles.connectButton}
+                  loading={refreshing}
+                  disabled={refreshing}
                 >
-                  Refresh
+                  {refreshing ? 'Refreshing...' : 'Refresh Progress'}
                 </Button>
               </>
             ) : (
@@ -318,7 +473,7 @@ export const SuggestionInboxScreen = ({ navigation }: any) => {
                 {filter === 'pending' && (
                   <Button
                     mode="contained"
-                    onPress={() => navigation.navigate('GmailConnection')}
+                    onPress={handleRescan}
                     icon="refresh"
                     style={styles.connectButton}
                   >
@@ -343,7 +498,7 @@ export const SuggestionInboxScreen = ({ navigation }: any) => {
         <FAB
           icon="refresh"
           style={styles.fab}
-          onPress={() => navigation.navigate('GmailConnection')}
+          onPress={handleRescan}
           label="Scan Again"
         />
       </View>
@@ -414,6 +569,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  detailText: {
+    marginLeft: 4,
+  },
   actions: {
     flexDirection: 'row',
     gap: 8,
@@ -450,5 +608,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     bottom: 16,
+  },
+  progressContainer: {
+    marginTop: 24,
+    marginBottom: 8,
+    width: '100%',
+    paddingHorizontal: 16,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(103, 80, 164, 0.08)',
+    borderRadius: 8,
+  },
+  progressText: {
+    marginLeft: 12,
+    flex: 1,
   },
 });

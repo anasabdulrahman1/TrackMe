@@ -23,9 +23,9 @@ interface IngestJob {
   user_id: string;
   parsed_data: {
     service_name: string;
-    price: number;
-    currency: string;
-    billing_cycle: string;
+    price: number | null;
+    currency: string | null;
+    billing_cycle: string | null;
     confidence: number;
     email_id: string;
     email_subject: string;
@@ -113,9 +113,11 @@ serve(async (_req) => {
     if (existingSubscription) {
       console.log(`[${WORKER_ID}] Found existing subscription: ${existingSubscription.name}`);
 
-      // Check if price or cycle has changed
-      const priceChanged = Math.abs(existingSubscription.price - job.parsed_data.price) > 0.01;
-      const cycleChanged = existingSubscription.billing_cycle !== job.parsed_data.billing_cycle;
+      // Check if price or cycle has changed (only if we have the data)
+      const priceChanged = job.parsed_data.price !== null && 
+        Math.abs(existingSubscription.price - job.parsed_data.price) > 0.01;
+      const cycleChanged = job.parsed_data.billing_cycle !== null && 
+        existingSubscription.billing_cycle !== job.parsed_data.billing_cycle;
 
       if (priceChanged || cycleChanged) {
         console.log(`[${WORKER_ID}] Price or cycle changed, creating alert suggestion`);
@@ -132,7 +134,9 @@ serve(async (_req) => {
     // 5. CALCULATE NEXT PAYMENT DATE
     // ========================================================================
 
-    const nextPaymentDate = calculateNextPaymentDate(job.parsed_data.billing_cycle);
+    const nextPaymentDate = job.parsed_data.billing_cycle 
+      ? calculateNextPaymentDate(job.parsed_data.billing_cycle)
+      : null;
 
     // ========================================================================
     // 6. INSERT SUBSCRIPTION SUGGESTION
@@ -224,7 +228,7 @@ serve(async (_req) => {
 /**
  * Calculate next payment date based on billing cycle
  */
-function calculateNextPaymentDate(billingCycle: string): string {
+function calculateNextPaymentDate(billingCycle: string): string | null {
   const today = new Date();
   let nextDate: Date;
 
